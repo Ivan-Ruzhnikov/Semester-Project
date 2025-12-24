@@ -35,5 +35,5 @@ class MotorDriver:
             self.ser.write(command.encode('utf-8'))
             self.history.append({
                 "time": time.ctime(time.time()),
-                "distance": distance
+                "distance": target_position_mm
             })
