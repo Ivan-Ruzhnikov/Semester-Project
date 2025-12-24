@@ -1,5 +1,5 @@
 // Управление шаговым двигателем NEMA17 с драйвером A4988
-// Два режима работы: угловое позиционирование или линейное перемещение
+// Линейное перемещение
 
 // Константы подключения
 const int STEP_PIN = 3;
@@ -8,24 +8,15 @@ const int ENABLE_PIN = 4;
 
 // Параметры двигателя и механики
 const int STEPS_PER_REV = 3200;  // Шагов на оборот для NEMA17
-const float DEGREES_PER_STEP = 360.0 / STEPS_PER_REV;
 const float SCREW_PITCH = 2;  // Шаг резьбы шпильки в мм
 const float MM_PER_STEP = SCREW_PITCH / STEPS_PER_REV;
 
-// Режимы работы
-enum OperationMode {
-  MODE_ANGLE,    // Режим углового позиционирования
-//  MODE_LINEAR    // Режим линейного перемещения
-};
 
 // Текущее состояние
-OperationMode currentMode = MODE_ANGLE;  // Текущий режим работы
-float currentAngle = 0.0;    // Текущий угол в градусах
 float currentPosition = 0.0;  // Текущая позиция в мм
 int speedRPM = 60;           // Скорость вращения (RPM)
 
-// Нулевые позиции для каждого режима
-float zeroAngle = 0.0;       // Нулевой угол
+
 float zeroPosition = 0.0;    // Нулевая позиция
 
 void setup() {
@@ -38,19 +29,14 @@ void setup() {
   digitalWrite(10, HIGH);
   Serial.begin(9600);
   Serial.println("Stepper Motor Control System");
-  Serial.println("Выберите режим работы:");
-  printModeMenu();
+  Serial.println("Режим линейного перемещения");
 }
 
 void loop() {
   if (Serial.available() > 0) {
     char command = Serial.read();
     
-    // Общие команды для обоих режимов
     switch (command) {
-      case 'm':  // Выбор режима работы
-        selectMode();
-        return;
       
       case 's':  // Установка скорости
         setSpeed();
@@ -68,49 +54,8 @@ void loop() {
         returnToZero();
         return;
     }
-    
-    // Команды специфичные для каждого режима
-    if (currentMode == MODE_ANGLE) {
-      handleAngleMode(command);
-    } else {
-      handleLinearMode(command);
+    handleLinearMode(command);
     }
-  }
-}
-
-void selectMode() {
-  Serial.println("\nВыберите режим работы:");
-  Serial.println("1: Режим углового позиционирования");
-  Serial.println("2: Режим линейного перемещения");
-  
-  while (!Serial.available()) {}
-  char mode = Serial.read();
-  
-  if (mode == '1') {
-    currentMode = MODE_ANGLE;
-    Serial.println("\n>> Выбран режим углового позиционирования");
-    Serial.println(">> Текущий угол: " + String(currentAngle - zeroAngle) + "°");
-    Serial.println(">> Нулевая позиция установлена на: " + String(zeroAngle) + "°");
-  } else if (mode == '2') {
-  //  currentMode = MODE_LINEAR;
-  //  Serial.println("\n>> Выбран режим линейного перемещения");
-  //  Serial.println(">> Текущая позиция: " + String(currentPosition - zeroPosition) + "мм");
- //  Serial.println(">> Нулевая позиция установлена на: " + String(zeroPosition) + "мм");
-    
-  }
-  
-  printMainMenu();
-}
-
-void handleAngleMode(char command) {
-  switch (command) {
-    case '1':  // Поворот на заданный угол
-      Serial.println("Введите целевой угол в градусах:");
-      while (!Serial.available()) {}
-      float targetAngle = Serial.parseFloat();
-      moveToAngle(targetAngle + zeroAngle);
-      break;
-  }
 }
 
 void handleLinearMode(char command) {
@@ -132,52 +77,16 @@ void setSpeed() {
 }
 
 void setCurrentPositionAsZero() {
-  if (currentMode == MODE_ANGLE) {
-    zeroAngle = currentAngle;
-    Serial.println("\n>> Установлена новая нулевая точка для угла");
-    Serial.println(">> Текущий угол: 0°");
-    Serial.println(">> Абсолютное значение: " + String(currentAngle) + "°");
-  } else {
-    zeroPosition = currentPosition;
-    Serial.println("\n>> Установлена новая нулевая точка для позиции");
-    Serial.println(">> Текущая позиция: 0мм");
-    Serial.println(">> Абсолютное значение: " + String(currentPosition) + "мм");
-  }
+
+  zeroPosition = currentPosition;
+  Serial.println("\n>> Установлена новая нулевая точка для позиции");
+  Serial.println(">> Текущая позиция: 0мм");
+  Serial.println(">> Абсолютное значение: " + String(currentPosition) + "мм");
 }
 
 void returnToZero() {
-  if (currentMode == MODE_ANGLE) {
-    Serial.println("\n>> Возврат в нулевое угловое положение...");
-    moveToAngle(zeroAngle);
-  } else {
-    Serial.println("\n>> Возврат в нулевую позицию...");
-    moveToPosition(zeroPosition);
-  }
-}
-
-void moveToAngle(float targetAngle) {
-  float angleDiff = targetAngle - currentAngle;
-  bool clockwise = (angleDiff > 0);
-  digitalWrite(DIR_PIN, clockwise ? HIGH : LOW);
-  
-  long steps = abs(round(angleDiff / DEGREES_PER_STEP));
-  float stepsPerSecond = (speedRPM * STEPS_PER_REV) / 60.0;
-  int delayBetweenSteps = (1000000 / stepsPerSecond) / 2;
-  
-  Serial.println("\n>> Перемещение...");
-  Serial.println(">> Из: " + String(currentAngle - zeroAngle) + "° в: " + String(targetAngle - zeroAngle) + "°");
-  
-  for (long i = 0; i < steps; i++) {
-    digitalWrite(STEP_PIN, HIGH);
-    delayMicroseconds(delayBetweenSteps);
-    digitalWrite(STEP_PIN, LOW);
-    delayMicroseconds(delayBetweenSteps);
-  }
-  
-  currentAngle = targetAngle;
-  Serial.println(">> Перемещение завершено");
-  Serial.println(">> Текущий угол: " + String(currentAngle - zeroAngle) + "°");
-  Serial.println(">> Абсолютное значение: " + String(currentAngle) + "°");
+  Serial.println("\n>> Возврат в нулевую позицию...");
+  moveToPosition(zeroPosition);
 }
 
 void moveToPosition(float targetPosition) {
@@ -207,30 +116,17 @@ void moveToPosition(float targetPosition) {
 
 void printMainMenu() {
   Serial.println("\n=== Система управления шаговым двигателем ===");
-  Serial.println("Текущий режим: " + String(currentMode == MODE_ANGLE ? "Угловой" : "Линейный"));
+
+  Serial.println("1: Переместить на заданное расстояние");
+  Serial.println("Текущая позиция: " + String(currentPosition - zeroPosition) + "мм");
+  Serial.println("Нулевая точка установлена на: " + String(zeroPosition) + "мм");
   
-  if (currentMode == MODE_ANGLE) {
-    Serial.println("1: Поворот на заданный угол");
-    Serial.println("Текущий угол: " + String(currentAngle - zeroAngle) + "°");
-    Serial.println("Нулевая точка установлена на: " + String(zeroAngle) + "°");
-  } else {
-    Serial.println("1: Переместить на заданное расстояние");
-    Serial.println("Текущая позиция: " + String(currentPosition - zeroPosition) + "мм");
-    Serial.println("Нулевая точка установлена на: " + String(zeroPosition) + "мм");
-  }
   
   Serial.println("\nОбщие команды:");
   Serial.println("z: Установить текущую позицию как нулевую");
   Serial.println("r: Вернуться в нулевое положение");
-  Serial.println("m: Выбор режима работы");
   Serial.println("s: Установка скорости (текущая: " + String(speedRPM) + " RPM)");
   Serial.println("h: Показать это меню");
   Serial.println("=====================================");
 }
 
-void printModeMenu() {
-  Serial.println("\n=== Выбор режима работы ===");
-  Serial.println("1: Режим углового позиционирования");
-  Serial.println("2: Режим линейного перемещения");
-  Serial.println("=====================================");
-}
